@@ -57,7 +57,7 @@ def get_category_by_id(case_id):
             return label
     return "📁 Altri Casi Clinici"
 
-# 2. Scansione Automatica Cartelle (Supporta sia '001' che '001_nome')
+# 2. Scansione Automatica Cartelle (Supporta sia '001' che '001_vescica')
 def discover_cases(casi_dir="casi"):
     cases = []
     if not os.path.exists(casi_dir):
@@ -115,7 +115,7 @@ if st.session_state.active_case is None:
     available_cases = discover_cases()
 
     if not available_cases:
-        st.warning("⚠️ Nessun caso clinico trovato nella cartella `casi/`. Assicurati di aver caricato il file in `casi/001/scenario.json`.")
+        st.warning("⚠️ Nessun caso clinico trovato nella cartella `casi/`. Assicurati di aver creato la cartella e inserito `scenario.json` (es: `casi/001/scenario.json` o `casi/001_vescica/scenario.json`).")
     else:
         categorized = {}
         for c in available_cases:
