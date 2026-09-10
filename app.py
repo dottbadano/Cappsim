@@ -42,7 +42,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 1. Mappatura dei Range Numerici per Categoria
+# 1. Mappatura Categorie per Range Numerico
 CATEGORIES = {
     (1, 99): "🩸 Vescica",
     (100, 199): "🎯 Prostata",
@@ -57,7 +57,7 @@ def get_category_by_id(case_id):
             return label
     return "📁 Altri Casi Clinici"
 
-# 2. Scansione Automatica della cartella 'casi'
+# 2. Scansione Automatica Cartelle (Supporta sia '001' che '001_nome')
 def discover_cases(casi_dir="casi"):
     cases = []
     if not os.path.exists(casi_dir):
@@ -68,9 +68,18 @@ def discover_cases(casi_dir="casi"):
         scenario_path = os.path.join(folder_path, "scenario.json")
         
         if os.path.isdir(folder_path) and os.path.exists(scenario_path):
-            match = re.match(r"^(\d+)_", folder_name)
-            if match:
-                case_num = int(match.group(1))
+            case_num = None
+            
+            # Caso 1: Nome cartella puramente numerico (es. '001')
+            if folder_name.isdigit():
+                case_num = int(folder_name)
+            # Caso 2: Nome cartella con prefisso numerico (es. '001_vescica')
+            else:
+                match = re.match(r"^(\d+)", folder_name)
+                if match:
+                    case_num = int(match.group(1))
+            
+            if case_num is not None:
                 category = get_category_by_id(case_num)
                 try:
                     with open(scenario_path, "r", encoding="utf-8") as f:
@@ -78,7 +87,7 @@ def discover_cases(casi_dir="casi"):
                     cases.append({
                         "id": case_num,
                         "folder": folder_name,
-                        "title": data.get("titolo", folder_name),
+                        "title": data.get("titolo", f"Caso #{case_num:03d}"),
                         "category": category,
                         "path": scenario_path
                     })
@@ -91,12 +100,12 @@ def load_scenario(scenario_path):
     with open(scenario_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-# Inizializzazione Session State
+# Session State
 if "active_case" not in st.session_state:
     st.session_state.active_case = None
 
 # ==============================================================================
-# SCHERMATA 1: SELEZIONE DEL CASO CLINICO (ACCESSO)
+# MENU ACCESSO CASI
 # ==============================================================================
 if st.session_state.active_case is None:
     st.title("🩺 CAPPSIM — Seleziona Caso Clinico")
@@ -106,9 +115,8 @@ if st.session_state.active_case is None:
     available_cases = discover_cases()
 
     if not available_cases:
-        st.warning("⚠️ Nessun caso clinico trovato nella cartella `casi/`. Assicurati di aver caricato le cartelle come `001_nome_caso` contenenti il file `scenario.json`.")
+        st.warning("⚠️ Nessun caso clinico trovato nella cartella `casi/`. Assicurati di aver caricato il file in `casi/001/scenario.json`.")
     else:
-        # Raggruppa per categoria
         categorized = {}
         for c in available_cases:
             categorized.setdefault(c["category"], []).append(c)
@@ -130,13 +138,12 @@ if st.session_state.active_case is None:
                     st.rerun()
 
 # ==============================================================================
-# SCHERMATA 2: SIMULATORE CLINICO (MOTORE CON PROCEDI)
+# MOTORE SIMULATORE
 # ==============================================================================
 else:
     scenario = st.session_state.scenario
     node = scenario["nodi"][st.session_state.current_node_id]
 
-    # Header con pulsante di uscita
     top_col1, top_col2 = st.columns([4, 1])
     with top_col1:
         st.title("🩺 CAPPSIM — Simulator")
@@ -148,7 +155,6 @@ else:
 
     st.divider()
 
-    # Feedback Scelta Precedente
     if st.session_state.last_feedback:
         st.markdown(f"""
         <div class="feedback-box">
@@ -156,7 +162,6 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-    # Quadro Clinico
     st.subheader(f"📍 {node.get('titolo_fase', 'Quadro Clinico')}")
     with st.expander("📋 CONSULTA REFERTI E QUADRO CLINICO", expanded=True):
         t1, t2, t3 = st.tabs(["Anamnesi", "Esame Obiettivo", "Esami Ematici / Imaging"])
@@ -170,7 +175,6 @@ else:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Epilogo / Fine Caso
     if node.get("is_epilogo", False):
         st.error(f"🛑 {node['domanda']}")
         st.success("Simulazione conclusa per questo percorso.")
@@ -186,7 +190,6 @@ else:
                 st.session_state.active_case = None
                 st.rerun()
 
-    # Quesito + Scelte
     else:
         st.markdown(f"""
         <div class="question-box">
@@ -206,7 +209,6 @@ else:
                     st.session_state.selected_option = opt
                     st.rerun()
 
-        # Pulsante PROCEDI ➔
         if st.session_state.selected_option:
             st.divider()
             c1, c2, c3 = st.columns([1, 2, 1])
