@@ -1,47 +1,43 @@
-# 2. Scansione Automatica Cartelle con Percorso Assoluto
-def discover_cases():
-    cases = []
-    # Ottiene la cartella esatta in cui si trova app.py
+import streamlit as st
+import os
+import json
+import re
+
+st.set_page_config(page_title="CAPPSIM - Debug Mode", layout="wide")
+
+st.title("🩺 CAPPSIM — Diagnostica di Avvio")
+
+try:
+    st.write("### 1. Controllo Ambiente")
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    st.write(f"- Cartella dello script (`base_dir`): `{base_dir}`")
+    st.write(f"- Directory di lavoro corrente: `{os.getcwd()}`")
+    
     casi_dir = os.path.join(base_dir, "casi")
-    
-    if not os.path.exists(casi_dir):
-        st.error(f"❌ ERRORE: La cartella 'casi' non esiste in: {base_dir}")
-        return cases
-    
-    subfolders = os.listdir(casi_dir)
-    
-    for folder_name in subfolders:
-        folder_path = os.path.join(casi_dir, folder_name)
+    st.write(f"- Percorso cartella 'casi': `{casi_dir}`")
+    st.write(f"- La cartella 'casi' esiste?: **{os.path.exists(casi_dir)}**")
+
+    if os.path.exists(casi_dir):
+        contents = os.listdir(casi_dir)
+        st.write(f"- Contenuto della cartella 'casi': `{contents}`")
         
-        if os.path.isdir(folder_path):
-            scenario_path = os.path.join(folder_path, "scenario.json")
-            
-            if os.path.exists(scenario_path):
-                case_num = None
-                if folder_name.isdigit():
-                    case_num = int(folder_name)
-                else:
-                    match = re.match(r"^(\d+)", folder_name)
-                    if match:
-                        case_num = int(match.group(1))
-                
-                if case_num is not None:
-                    category = get_category_by_id(case_num)
+        for item in contents:
+            item_path = os.path.join(casi_dir, item)
+            if os.path.isdir(item_path):
+                st.write(f"  - Sottocartella trovata: `{item}`")
+                json_path = os.path.join(item_path, "scenario.json")
+                st.write(f"    - 'scenario.json' presente?: `{os.path.exists(json_path)}`")
+                if os.path.exists(json_path):
                     try:
-                        with open(scenario_path, "r", encoding="utf-8") as f:
+                        with open(json_path, "r", encoding="utf-8") as f:
                             data = json.load(f)
-                        cases.append({
-                            "id": case_num,
-                            "folder": folder_name,
-                            "title": data.get("titolo", f"Caso #{case_num:03d}"),
-                            "category": category,
-                            "path": scenario_path
-                        })
+                        st.success(f"    - 'scenario.json' letto con successo! Titolo: *{data.get('titolo', 'Senza titolo')}*")
                     except Exception as e:
-                        st.error(f"⚠️ Errore di lettura nel file `{scenario_path}`: {e}")
-            else:
-                # Mostra quali cartelle dentro 'casi' non hanno il file json
-                st.info(f"ℹ️ La cartella `{folder_name}` non contiene un file `scenario.json`.")
-                
-    return sorted(cases, key=lambda x: x["id"])
+                        st.error(f"    - ❌ Errore nel parsing del JSON in `{json_path}`: {e}")
+
+    st.write("---")
+    st.success("✅ Il motore di diagnostica ha eseguito tutti i controlli senza crashare.")
+
+except Exception as e:
+    st.error(f"❌ SI È VERIFICATO UN CRASH CRITICO NELLO SCRIPT:")
+    st.exception(e)
