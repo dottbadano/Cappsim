@@ -6,26 +6,36 @@ import re
 # Configurazione Pagina
 st.set_page_config(page_title="Cappsim Engine", layout="wide", initial_sidebar_state="collapsed")
 
-# Styling "Stile Milionario"
+# Styling personalizzato (Sfondo nero, pulsanti con bordo rosso granata e testo giallo ocra)
 st.markdown("""
 <style>
+    .stApp {
+        background-color: #000000;
+    }
     div[data-testid="stColumn"] button {
         width: 100%;
         height: 75px;
         font-size: 17px !important;
         font-weight: 600;
         border-radius: 12px;
-        border: 2px solid #1E88E5;
-        background-color: #0E1117;
-        color: #FFFFFF;
+        border: 2px solid #6B1226;
+        background-color: #000000;
+        color: #D4AF37;
         text-align: left;
         padding-left: 20px;
     }
+    div[data-testid="stColumn"] button:hover, 
+    div[data-testid="stColumn"] button:focus,
+    div[data-testid="stColumn"] button:active {
+        color: #FFFFFF !important;
+        border-color: #FFFFFF !important;
+        background-color: #1A0505 !important;
+    }
     .question-box {
-        background-color: #1E1E1E;
+        background-color: #121212;
         padding: 22px;
         border-radius: 10px;
-        border-left: 6px solid #1E88E5;
+        border-left: 6px solid #6B1226;
         margin-bottom: 25px;
         font-size: 20px;
         color: #FFFFFF;
