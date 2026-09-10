@@ -57,42 +57,52 @@ def get_category_by_id(case_id):
             return label
     return "📁 Altri Casi Clinici"
 
-# 2. Scansione Automatica Cartelle (Supporta sia '001' che '001_vescica')
+# 2. Scansione Automatica Cartelle con DEBUG visivo
 def discover_cases(casi_dir="casi"):
     cases = []
+    
+    # Controllo se la cartella esiste
     if not os.path.exists(casi_dir):
+        st.error(f"❌ ERRORE: La cartella '{casi_dir}' non esiste nella directory corrente ({os.getcwd()}).")
         return cases
     
-    for folder_name in os.listdir(casi_dir):
+    subfolders = os.listdir(casi_dir)
+    
+    for folder_name in subfolders:
         folder_path = os.path.join(casi_dir, folder_name)
-        scenario_path = os.path.join(folder_path, "scenario.json")
         
-        if os.path.isdir(folder_path) and os.path.exists(scenario_path):
-            case_num = None
+        if os.path.isdir(folder_path):
+            scenario_path = os.path.join(folder_path, "scenario.json")
             
-            # Caso 1: Nome cartella puramente numerico (es. '001')
-            if folder_name.isdigit():
-                case_num = int(folder_name)
-            # Caso 2: Nome cartella con prefisso numerico (es. '001_vescica')
+            if os.path.exists(scenario_path):
+                case_num = None
+                if folder_name.isdigit():
+                    case_num = int(folder_name)
+                else:
+                    match = re.match(r"^(\d+)", folder_name)
+                    if match:
+                        case_num = int(match.group(1))
+                
+                if case_num is not None:
+                    category = get_category_by_id(case_num)
+                    try:
+                        with open(scenario_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        cases.append({
+                            "id": case_num,
+                            "folder": folder_name,
+                            "title": data.get("titolo", f"Caso #{case_num:03d}"),
+                            "category": category,
+                            "path": scenario_path
+                        })
+                    except Exception as e:
+                        # Mostra a schermo l'errore esatto se il JSON è scritto male
+                        st.error(f"⚠️ Errore di lettura nel file `{scenario_path}`: {e}")
+                else:
+                    st.warning(f"⚠️ La cartella `{folder_name}` non inizia con un numero valido (es. `001` o `001_nome`).")
             else:
-                match = re.match(r"^(\d+)", folder_name)
-                if match:
-                    case_num = int(match.group(1))
-            
-            if case_num is not None:
-                category = get_category_by_id(case_num)
-                try:
-                    with open(scenario_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    cases.append({
-                        "id": case_num,
-                        "folder": folder_name,
-                        "title": data.get("titolo", f"Caso #{case_num:03d}"),
-                        "category": category,
-                        "path": scenario_path
-                    })
-                except Exception:
-                    pass
+                st.info(f"ℹ️ La cartella `{folder_name}` non contiene un file `scenario.json`.")
+                
     return sorted(cases, key=lambda x: x["id"])
 
 # 3. Caricamento Scenario
@@ -112,10 +122,15 @@ if st.session_state.active_case is None:
     st.caption("Piattaforma di Simulazione Decisionale Urologica")
     st.divider()
 
+    # Box informativo di controllo percorso
+    with st.expander("🛠️ Info Percorsi (Debug)", expanded=False):
+        st.write("Cartella di lavoro corrente:", os.getcwd())
+        st.write("Esistenza cartella 'casi':", os.path.exists("casi"))
+
     available_cases = discover_cases()
 
     if not available_cases:
-        st.warning("⚠️ Nessun caso clinico trovato nella cartella `casi/`. Assicurati di aver creato la cartella e inserito `scenario.json` (es: `casi/001/scenario.json` o `casi/001_vescica/scenario.json`).")
+        st.warning("⚠️ Nessun caso clinico valido trovato. Controlla i messaggi di avviso sopra o verifica di aver inserito correttamente la cartella `casi/001/scenario.json`.")
     else:
         categorized = {}
         for c in available_cases:
