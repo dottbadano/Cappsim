@@ -1,230 +1,169 @@
 import streamlit as st
-import json
 import os
-import re
+import sys
 
-# Configurazione Pagina
-st.set_page_config(page_title="Cappsim Engine", layout="wide", initial_sidebar_state="collapsed")
+# Aggiunge il path corrente per individuare i moduli
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Styling personalizzato (Sfondo nero, pulsanti con bordo rosso granata e testo giallo ocra)
-st.markdown("""
-<style>
-    .stApp {
-        background-color: #000000;
-    }
-    div[data-testid="stColumn"] button {
-        width: 100%;
-        height: 75px;
-        font-size: 17px !important;
-        font-weight: 600;
-        border-radius: 12px;
-        border: 2px solid #6B1226;
-        background-color: #000000;
-        color: #D4AF37;
-        text-align: left;
-        padding-left: 20px;
-    }
-    div[data-testid="stColumn"] button:hover, 
-    div[data-testid="stColumn"] button:focus,
-    div[data-testid="stColumn"] button:active {
-        color: #FFFFFF !important;
-        border-color: #FFFFFF !important;
-        background-color: #1A0505 !important;
-    }
-    .question-box {
-        background-color: #121212;
-        padding: 22px;
-        border-radius: 10px;
-        border-left: 6px solid #6B1226;
-        margin-bottom: 25px;
-        font-size: 20px;
-        color: #FFFFFF;
-    }
-    .feedback-box {
-        background-color: #112233;
-        padding: 18px;
-        border-radius: 10px;
-        border-left: 6px solid #00E676;
-        margin-bottom: 25px;
-        font-size: 17px;
-        color: #E0E0E0;
-    }
-</style>
-""", unsafe_allow_html=True)
+try:
+    from text import UI_STRINGS
+except ImportError:
+    UI_STRINGS = {"landing_subtitle": "Simulazione Clinica Multidisciplinare 2gether"}
 
-# 1. Mappatura Categorie per Range Numerico
-CATEGORIES = {
-    (1, 99): "🩸 Vescica",
-    (100, 199): "🎯 Prostata",
-    (200, 299): "🧬 Rene",
-    (300, 399): "🌊 Alta Via Urinaria",
-    (400, 499): "⚾ Testicolo"
-}
+st.set_page_config(
+    page_title="2getSIM — Corso 2gether",
+    page_icon="🩺",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-def get_category_by_id(case_id):
-    for (start, end), label in CATEGORIES.items():
-        if start <= case_id <= end:
-            return label
-    return "📁 Altri Casi Clinici"
+# Inizializzazione Session State
+if "station_name" not in st.session_state:
+    st.session_state.station_name = ""
+if "current_case_key" not in st.session_state:
+    st.session_state.current_case_key = None
+if "current_node_id" not in st.session_state:
+    st.session_state.current_node_id = "start"
+if "vitalita" not in st.session_state:
+    st.session_state.vitalita = 100
+if "oncologico" not in st.session_state:
+    st.session_state.oncologico = 100
+if "qol" not in st.session_state:
+    st.session_state.qol = 75
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-# 2. Scansione Automatica Cartelle con Percorso Assoluto
-def discover_cases():
-    cases = []
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    casi_dir = os.path.join(base_dir, "casi")
+def load_clinical_cases():
+    """
+    Carica dinamicamente tutti i moduli .py all'interno della cartella 'casi_clinici'.
+    Ogni file deve esporre un dizionario strutturato CASE_DATA.
+    """
+    cases = {}
+    cases_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "casi_clinici")
     
-    if not os.path.exists(casi_dir):
-        return cases
-    
-    for folder_name in os.listdir(casi_dir):
-        folder_path = os.path.join(casi_dir, folder_name)
-        scenario_path = os.path.join(folder_path, "scenario.json")
-        
-        if os.path.isdir(folder_path) and os.path.exists(scenario_path):
-            case_num = None
-            if folder_name.isdigit():
-                case_num = int(folder_name)
-            else:
-                match = re.match(r"^(\d+)", folder_name)
-                if match:
-                    case_num = int(match.group(1))
-            
-            if case_num is not None:
-                category = get_category_by_id(case_num)
+    if os.path.exists(cases_dir):
+        for fname in os.listdir(cases_dir):
+            if fname.endswith(".py") and not fname.startswith("__"):
+                mod_name = fname[:-3]
                 try:
-                    with open(scenario_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    cases.append({
-                        "id": case_num,
-                        "folder": folder_name,
-                        "title": data.get("titolo", f"Caso #{case_num:03d}"),
-                        "category": category,
-                        "path": scenario_path
-                    })
-                except Exception:
-                    pass
-    return sorted(cases, key=lambda x: x["id"])
+                    mod = __import__(f"casi_clinici.{mod_name}", fromlist=["CASE_DATA"])
+                    if hasattr(mod, "CASE_DATA"):
+                        cases[mod_name] = mod.CASE_DATA
+                except Exception as e:
+                    st.error(f"Errore nel caricamento del caso clinico {mod_name}: {e}")
+                    
+    return cases
 
-# 3. Caricamento Scenario
-def load_scenario(scenario_path):
-    with open(scenario_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+def main():
+    st.sidebar.title("2getSIM • Control Room")
+    st.sidebar.markdown("---")
+    
+    # Caricamento dinamico dei casi dalla cartella
+    cases = load_clinical_cases()
+    
+    if not cases:
+        st.error("Nessun caso clinico trovato nella cartella 'casi_clinici/'. Aggiungi almeno un file .py con CASE_DATA.")
+        return
 
-# Session State
-if "active_case" not in st.session_state:
-    st.session_state.active_case = None
+    # Seleziona il caso corrente se non impostato
+    if st.session_state.current_case_key not in cases:
+        st.session_state.current_case_key = list(cases.keys())[0]
 
-# ==============================================================================
-# MENU ACCESSO CASI
-# ==============================================================================
-if st.session_state.active_case is None:
-    st.title("🩺 CAPPSIM — Seleziona Caso Clinico")
-    st.caption("Piattaforma di Simulazione Decisionale Urologica")
-    st.divider()
-
-    available_cases = discover_cases()
-
-    if not available_cases:
-        st.warning("⚠️ Nessun caso clinico trovato nella cartella `casi/`. Assicurati di aver inserito `scenario.json` dentro la cartella del caso (es: `casi/001/scenario.json`).")
-    else:
-        categorized = {}
-        for c in available_cases:
-            categorized.setdefault(c["category"], []).append(c)
-
-        selected_cat = st.selectbox("📌 Seleziona Distretto Urologico:", list(categorized.keys()))
-
-        st.subheader(f"Casi Disponibili in {selected_cat}")
-        for c in categorized[selected_cat]:
-            col_info, col_btn = st.columns([3, 1])
-            with col_info:
-                st.markdown(f"**Caso #{c['id']:03d}:** {c['title']}")
-            with col_btn:
-                if st.button("AVVIA SIMULAZIONE ➔", key=f"start_{c['id']}"):
-                    st.session_state.scenario = load_scenario(c["path"])
-                    st.session_state.active_case = c["id"]
-                    st.session_state.current_node_id = st.session_state.scenario["nodo_iniziale"]
-                    st.session_state.selected_option = None
-                    st.session_state.last_feedback = None
+    # Schermata di configurazione postazione (Landing)
+    if not st.session_state.station_name:
+        st.title("Configurazione Postazione Tablet")
+        st.markdown("Inserisci l'identificativo del partecipante o del centro ospedaliero per accedere alla simulazione.")
+        
+        with st.form("landing_form"):
+            station_input = st.text_input("Identificativo Partecipante / Centro Ospedaliero", placeholder="Es. Centro 1 / Dr. Rossi")
+            
+            case_keys = list(cases.keys())
+            case_labels = [cases[k].get("title", k) for k in case_keys]
+            selected_case_label = st.selectbox("Seleziona Caso Clinico", case_labels)
+            
+            submitted = st.form_submit_button("Avvia Simulazione Clinica →")
+            
+            if submitted:
+                if station_input:
+                    st.session_state.station_name = station_input
+                    for k, v in cases.items():
+                        if v.get("title") == selected_case_label:
+                            st.session_state.current_case_key = k
+                            break
+                    # Reset stato clinico del caso
+                    active_case = cases[st.session_state.current_case_key]
+                    st.session_state.current_node_id = active_case.get("start_node", "start")
+                    st.session_state.vitalita = 100
+                    st.session_state.oncologico = 100
+                    st.session_state.qol = 75
+                    st.session_state.history = []
                     st.rerun()
+                else:
+                    st.error("Inserisci un identificativo postazione valido.")
+        return
 
-# ==============================================================================
-# MOTORE SIMULATORE
-# ==============================================================================
-else:
-    scenario = st.session_state.scenario
-    node = scenario["nodi"][st.session_state.current_node_id]
+    # Sidebar Postazione e Indicatori Live
+    st.sidebar.success(f"Postazione: {st.session_state.station_name}")
+    if st.sidebar.button("↺ Cambia Postazione / Caso"):
+        st.session_state.station_name = ""
+        st.rerun()
 
-    top_col1, top_col2 = st.columns([4, 1])
-    with top_col1:
-        st.title("🩺 CAPPSIM — Simulator")
-        st.caption(f"Caso #{st.session_state.active_case:03d}: **{scenario['titolo']}**")
-    with top_col2:
-        if st.button("🚪 Esci al Menu"):
-            st.session_state.active_case = None
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Indicatori Clinici Live")
+    st.sidebar.progress(st.session_state.vitalita / 100, text=f"Vitalità Paziente: {st.session_state.vitalita}%")
+    st.sidebar.progress(st.session_state.oncologico / 100, text=f"Controllo Oncologico: {st.session_state.oncologico}%")
+    st.sidebar.progress(st.session_state.qol / 100, text=f"Qualità di Vita (QoL): {st.session_state.qol}%")
+
+    # Recupero dati del caso e del nodo corrente
+    active_case = cases.get(st.session_state.current_case_key, {})
+    nodes = active_case.get("nodes", {})
+    node_data = nodes.get(st.session_state.current_node_id, None)
+
+    if not node_data:
+        st.error(f"Errore: Nodo clinico '{st.session_state.current_node_id}' non trovato nel caso.")
+        if st.button("Torna all'inizio del caso"):
+            st.session_state.current_node_id = active_case.get("start_node", "start")
+            st.rerun()
+        return
+
+    # UI Principale della Simulazione
+    st.title(active_case.get("title", "Simulazione Clinica"))
+    st.markdown(f"### {node_data.get('step_label', 'SNODO CLINICO')}")
+    st.subheader(node_data.get("title", ""))
+    st.write(node_data.get("clinical_text", ""))
+
+    if node_data.get("labs"):
+        st.info(f"**Esami / Reperti:** {node_data['labs']}")
+
+    # Se il nodo è terminale (Fine caso)
+    if node_data.get("is_end", False):
+        st.balloons()
+        if st.button("Riavvia il Caso dall'Inizio"):
+            st.session_state.current_node_id = active_case.get("start_node", "start")
+            st.session_state.vitalita = 100
+            st.session_state.oncologico = 100
+            st.session_state.qol = 75
+            st.session_state.history = []
+            st.rerun()
+        return
+
+    st.markdown("---")
+    st.markdown("#### Scegli la strategia clinica (Scelta secca One-Shot):")
+    
+    for opt in node_data.get("options", []):
+        btn_label = f"Opzione {opt['letter']}: {opt['text']}"
+        if st.button(btn_label, key=f"btn_{opt['letter']}_{st.session_state.current_node_id}"):
+            st.session_state.history.append(f"[{node_data['step_label']}] {opt['text']}")
+            st.session_state.vitalita = max(0, min(100, st.session_state.vitalita + opt.get("delta_vit", 0)))
+            st.session_state.oncologico = max(0, min(100, st.session_state.oncologico + opt.get("delta_onc", 0)))
+            st.session_state.qol = max(0, min(100, st.session_state.qol + opt.get("delta_qol", 0)))
+            st.session_state.current_node_id = opt["next"]
             st.rerun()
 
-    st.divider()
+    if st.session_state.history:
+        with st.expander("Tracciato storico delle decisioni"):
+            for h in st.session_state.history:
+                st.write(f"- {h}")
 
-    if st.session_state.last_feedback:
-        st.markdown(f"""
-        <div class="feedback-box">
-            {st.session_state.last_feedback}
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.subheader(f"📍 {node.get('titolo_fase', 'Quadro Clinico')}")
-    with st.expander("📋 CONSULTA REFERTI E QUADRO CLINICO", expanded=True):
-        t1, t2, t3 = st.tabs(["Anamnesi", "Esame Obiettivo", "Esami Ematici / Imaging"])
-        with t1:
-            st.write(node["quadro_clinico"].get("anamnesi", "Nessun dato."))
-        with t2:
-            st.write(node["quadro_clinico"].get("esame_obiettivo", "Nessun dato."))
-        with t3:
-            if "esami_ematici" in node["quadro_clinico"]:
-                st.table(node["quadro_clinico"]["esami_ematici"])
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    if node.get("is_epilogo", False):
-        st.error(f"🛑 {node['domanda']}")
-        st.success("Simulazione conclusa per questo percorso.")
-        col_end1, col_end2 = st.columns(2)
-        with col_end1:
-            if st.button("🔄 Riavvia questo Caso", type="primary", use_container_width=True):
-                st.session_state.current_node_id = scenario["nodo_iniziale"]
-                st.session_state.selected_option = None
-                st.session_state.last_feedback = None
-                st.rerun()
-        with col_end2:
-            if st.button("📋 Torna al Menu Casi", use_container_width=True):
-                st.session_state.active_case = None
-                st.rerun()
-
-    else:
-        st.markdown(f"""
-        <div class="question-box">
-            ❓ <b>QUESITO CLINICO:</b><br>{node['domanda']}
-        </div>
-        """, unsafe_allow_html=True)
-
-        col1, col2 = st.columns(2)
-        labels = ["A", "B", "C", "D"]
-
-        for idx, opt in enumerate(node["opzioni"]):
-            target_col = col1 if idx % 2 == 0 else col2
-            with target_col:
-                is_selected = (st.session_state.selected_option is not None) and (st.session_state.selected_option["id"] == opt["id"])
-                label_text = f"{'▶ ' if is_selected else ''}{labels[idx]}: {opt['testo']}"
-                if st.button(label_text, key=f"opt_{opt['id']}"):
-                    st.session_state.selected_option = opt
-                    st.rerun()
-
-        if st.session_state.selected_option:
-            st.divider()
-            c1, c2, c3 = st.columns([1, 2, 1])
-            with c2:
-                if st.button("PROCEDI ➔", type="primary", use_container_width=True):
-                    st.session_state.last_feedback = st.session_state.selected_option.get("feedback", "")
-                    st.session_state.current_node_id = st.session_state.selected_option["prossimo_nodo"]
-                    st.session_state.selected_option = None
-                    st.rerun()
+if __name__ == "__main__":
+    main()
