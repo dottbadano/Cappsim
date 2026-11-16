@@ -1,169 +1,140 @@
-import streamlit as st
+import importlib
 import os
-import sys
+import streamlit as st
 
-# Aggiunge il path corrente per individuare i moduli
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-try:
-    from text import UI_STRINGS
-except ImportError:
-    UI_STRINGS = {"landing_subtitle": "Simulazione Clinica Multidisciplinare 2gether"}
-
+# Configurazione pagina
 st.set_page_config(
-    page_title="2getSIM — Corso 2gether",
-    page_icon="🩺",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="2getSIM - Uro-Oncologia Clinica", page_icon="⚡", layout="wide"
 )
 
-# Inizializzazione Session State
-if "station_name" not in st.session_state:
-    st.session_state.station_name = ""
-if "current_case_key" not in st.session_state:
-    st.session_state.current_case_key = None
-if "current_node_id" not in st.session_state:
-    st.session_state.current_node_id = "start"
-if "vitalita" not in st.session_state:
-    st.session_state.vitalita = 100
-if "oncologico" not in st.session_state:
-    st.session_state.oncologico = 100
-if "qol" not in st.session_state:
-    st.session_state.qol = 75
-if "history" not in st.session_state:
-    st.session_state.history = []
+# ---------------------------------------------------------------------------
+# SISTEMA DI AUTENTICAZIONE (MASTER vs DISCENTI)
+# ---------------------------------------------------------------------------
+MASTER_CREDENTIALS = {
+    "gbadano": "211280",
+    "acavo": "211186",
+    "smigone": "090286",  # o smigone a seconda di come preferisci digitare
+}
 
-def load_clinical_cases():
-    """
-    Carica dinamicamente tutti i moduli .py all'interno della cartella 'casi_clinici'.
-    Ogni file deve esporre un dizionario strutturato CASE_DATA.
-    """
-    cases = {}
-    cases_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "casi_clinici")
-    
-    if os.path.exists(cases_dir):
-        for fname in os.listdir(cases_dir):
-            if fname.endswith(".py") and not fname.startswith("__"):
-                mod_name = fname[:-3]
-                try:
-                    mod = __import__(f"casi_clinici.{mod_name}", fromlist=["CASE_DATA"])
-                    if hasattr(mod, "CASE_DATA"):
-                        cases[mod_name] = mod.CASE_DATA
-                except Exception as e:
-                    st.error(f"Errore nel caricamento del caso clinico {mod_name}: {e}")
-                    
-    return cases
+# Inizializzazione dello stato di autenticazione
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "user_role" not in st.session_state:
+    st.session_state.user_role = None  # "master" o "discente"
+if "username" not in st.session_state:
+    st.session_state.username = None
 
-def main():
-    st.sidebar.title("2getSIM • Control Room")
-    st.sidebar.markdown("---")
-    
-    # Caricamento dinamico dei casi dalla cartella
-    cases = load_clinical_cases()
-    
-    if not cases:
-        st.error("Nessun caso clinico trovato nella cartella 'casi_clinici/'. Aggiungi almeno un file .py con CASE_DATA.")
-        return
 
-    # Seleziona il caso corrente se non impostato
-    if st.session_state.current_case_key not in cases:
-        st.session_state.current_case_key = list(cases.keys())[0]
+def login_screen():
+    st.markdown(
+        """
+        <div style="text-align: center; padding: 2rem 0;">
+            <h1>⚡ 2getSIM — Accesso Riservato</h1>
+            <p style="color: #666; font-size: 1.1rem;">Corso Residenziale Uro-Oncologico Multidisciplinare</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    # Schermata di configurazione postazione (Landing)
-    if not st.session_state.station_name:
-        st.title("Configurazione Postazione Tablet")
-        st.markdown("Inserisci l'identificativo del partecipante o del centro ospedaliero per accedere alla simulazione.")
-        
-        with st.form("landing_form"):
-            station_input = st.text_input("Identificativo Partecipante / Centro Ospedaliero", placeholder="Es. Centro 1 / Dr. Rossi")
-            
-            case_keys = list(cases.keys())
-            case_labels = [cases[k].get("title", k) for k in case_keys]
-            selected_case_label = st.selectbox("Seleziona Caso Clinico", case_labels)
-            
-            submitted = st.form_submit_button("Avvia Simulazione Clinica →")
-            
-            if submitted:
-                if station_input:
-                    st.session_state.station_name = station_input
-                    for k, v in cases.items():
-                        if v.get("title") == selected_case_label:
-                            st.session_state.current_case_key = k
-                            break
-                    # Reset stato clinico del caso
-                    active_case = cases[st.session_state.current_case_key]
-                    st.session_state.current_node_id = active_case.get("start_node", "start")
-                    st.session_state.vitalita = 100
-                    st.session_state.oncologico = 100
-                    st.session_state.qol = 75
-                    st.session_state.history = []
-                    st.rerun()
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.form("login_form"):
+            username_input = st.text_input(
+                "Username", placeholder="Inserisci username o ID (es. 001 o gbadano)"
+            )
+            password_input = st.text_input(
+                "Password", type="password", placeholder="Password di accesso"
+            )
+            submit = st.form_submit_button(
+                "Accedi alla Sessione", use_container_width=True
+            )
+
+            if submit:
+                # Controllo Master (Docenti)
+                if username_input in MASTER_CREDENTIALS:
+                    if MASTER_CREDENTIALS[username_input] == password_input:
+                        st.session_state.authenticated = True
+                        st.session_state.user_role = "master"
+                        st.session_state.username = username_input
+                        st.rerun()
+                    else:
+                        st.error("Password Master errata.")
+
+                # Controllo Discenti (001 a 016, password unica: 12345678)
+                elif username_input.isdigit() and 1 <= int(username_input) <= 16:
+                    if password_input == "12345678":
+                        st.session_state.authenticated = True
+                        st.session_state.user_role = "discente"
+                        st.session_state.username = (
+                            f"Discente {username_input}"
+                        )
+                        st.rerun()
+                    else:
+                        st.error(
+                            "Password errata per i discenti (Default: 12345678)."
+                        )
                 else:
-                    st.error("Inserisci un identificativo postazione valido.")
-        return
+                    st.error(
+                        "Credenziali non riconosciute. Verifica username e password."
+                    )
 
-    # Sidebar Postazione e Indicatori Live
-    st.sidebar.success(f"Postazione: {st.session_state.station_name}")
-    if st.sidebar.button("↺ Cambia Postazione / Caso"):
-        st.session_state.station_name = ""
+
+if not st.session_state.authenticated:
+    login_screen()
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# MOTORE PRINCIPALE DELL'APPLICAZIONE (DOPO IL LOGIN)
+# ---------------------------------------------------------------------------
+
+# Barra laterale di controllo ruolo
+with st.sidebar:
+    st.markdown(f"### 👤 Utente: **{st.session_state.username}**")
+    st.markdown(
+        f"**Ruolo:** `{'Docente Master (Control Room)' if st.session_state.user_role == 'master' else 'Discente in Aula'}`"
+    )
+    if st.button("Disconnetti", use_container_width=True):
+        st.session_state.authenticated = False
+        st.session_state.user_role = None
+        st.session_state.username = None
         st.rerun()
+    st.divider()
 
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Indicatori Clinici Live")
-    st.sidebar.progress(st.session_state.vitalita / 100, text=f"Vitalità Paziente: {st.session_state.vitalita}%")
-    st.sidebar.progress(st.session_state.oncologico / 100, text=f"Controllo Oncologico: {st.session_state.oncologico}%")
-    st.sidebar.progress(st.session_state.qol / 100, text=f"Qualità di Vita (QoL): {st.session_state.qol}%")
+# Caricamento dinamico dei casi clinici dalla cartella 'casi_clinici'
+CASE_DIR = "casi_clinici"
+if not os.path.exists(CASE_DIR):
+    os.makedirs(CASE_DIR)
+    st.warning(
+        f"La cartella '{CASE_DIR}' è stata creata. Inserisci almeno un file `.py` con il caso clinico."
+    )
+    st.stop()
 
-    # Recupero dati del caso e del nodo corrente
-    active_case = cases.get(st.session_state.current_case_key, {})
-    nodes = active_case.get("nodes", {})
-    node_data = nodes.get(st.session_state.current_node_id, None)
+case_files = [
+    f[:-3] for f in os.listdir(CASE_DIR) if f.endswith(".py") and f != "__init__"
+]
 
-    if not node_data:
-        st.error(f"Errore: Nodo clinico '{st.session_state.current_node_id}' non trovato nel caso.")
-        if st.button("Torna all'inizio del caso"):
-            st.session_state.current_node_id = active_case.get("start_node", "start")
-            st.rerun()
-        return
+if not case_files:
+    st.error(
+        f"Nessun caso clinico trovato nella cartella '{CASE_DIR}/'. Aggiungi un file python con la logica del caso."
+    )
+    st.stop()
 
-    # UI Principale della Simulazione
-    st.title(active_case.get("title", "Simulazione Clinica"))
-    st.markdown(f"### {node_data.get('step_label', 'SNODO CLINICO')}")
-    st.subheader(node_data.get("title", ""))
-    st.write(node_data.get("clinical_text", ""))
+# Selezione del caso clinico
+selected_case_name = st.sidebar.selectbox(
+    "Seleziona Caso Clinico", case_files, format_func=lambda x: x.replace("_", " ").title()
+)
 
-    if node_data.get("labs"):
-        st.info(f"**Esami / Reperti:** {node_data['labs']}")
-
-    # Se il nodo è terminale (Fine caso)
-    if node_data.get("is_end", False):
-        st.balloons()
-        if st.button("Riavvia il Caso dall'Inizio"):
-            st.session_state.current_node_id = active_case.get("start_node", "start")
-            st.session_state.vitalita = 100
-            st.session_state.oncologico = 100
-            st.session_state.qol = 75
-            st.session_state.history = []
-            st.rerun()
-        return
-
-    st.markdown("---")
-    st.markdown("#### Scegli la strategia clinica (Scelta secca One-Shot):")
-    
-    for opt in node_data.get("options", []):
-        btn_label = f"Opzione {opt['letter']}: {opt['text']}"
-        if st.button(btn_label, key=f"btn_{opt['letter']}_{st.session_state.current_node_id}"):
-            st.session_state.history.append(f"[{node_data['step_label']}] {opt['text']}")
-            st.session_state.vitalita = max(0, min(100, st.session_state.vitalita + opt.get("delta_vit", 0)))
-            st.session_state.oncologico = max(0, min(100, st.session_state.oncologico + opt.get("delta_onc", 0)))
-            st.session_state.qol = max(0, min(100, st.session_state.qol + opt.get("delta_qol", 0)))
-            st.session_state.current_node_id = opt["next"]
-            st.rerun()
-
-    if st.session_state.history:
-        with st.expander("Tracciato storico delle decisioni"):
-            for h in st.session_state.history:
-                st.write(f"- {h}")
-
-if __name__ == "__main__":
-    main()
+# Import dinamico del modulo del caso clinico
+try:
+    module = importlib.import_module(f"{CASE_DIR}.{selected_case_name}")
+    # Ogni modulo di caso clinico deve esporre una funzione principale 'render_case(user_role, username)'
+    if hasattr(module, "render_case"):
+        module.render_case(
+            st.session_state.user_role, st.session_state.username
+        )
+    else:
+        st.error(
+            f"Il modulo '{selected_case_name}.py' non contiene la funzione 'render_case(user_role, username)' richiesta."
+        )
+except Exception as e:
+    st.error(f"Errore nel caricamento del caso clinico: {e}")
